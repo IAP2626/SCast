@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coach's Screen Recorder</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #1a1a1a; color: white; text-align: center; padding: 50px; }
+        .container { max-width: 500px; margin: 0 auto; background: #2c3e50; padding: 30px; border-radius: 15px; border: 2px solid #34495e; }
+        h2 { margin-top: 0; color: #f1c40f; }
+        .status-box { margin: 20px 0; padding: 10px; border-radius: 8px; background: #121212; font-family: monospace; color: #2ecc71; }
+        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; transition: 0.2s; }
+        #startBtn { background: #e74c3c; color: white; }
+        #stopBtn { background: #95a5a6; color: white; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .instructions { font-size: 14px; color: #bdc3c7; line-height: 1.5; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Screencast Pro</h2>
+        <div id="status" class="status-box">Ready to Record</div>
+
+        <button id="startBtn">🔴 Select Window & Record</button>
+        <button id="stopBtn" disabled>⏹️ Stop & Save to iMac</button>
+
+        <div class="instructions">
+            <p><strong>Steps:</strong><br>
+            1. Click Record.<br>
+            2. In the popup, choose <b>"Window"</b> and select <b>Kami</b>.<br>
+            3. Make sure to allow <b>Microphone</b> access.<br>
+            4. Draw in Kami while you speak.<br>
+            5. Return here to click Stop.</p>
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let recordedChunks = [];
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+
+        startBtn.onclick = async () => {
+            recordedChunks = [];
+            try {
+                // 1. Capture the Window (Kami, etc)
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { cursor: "always" },
+                    audio: false // We capture mic separately for better quality
+                });
+
+                // 2. Capture the Microphone
+                const audioStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: true, noiseSuppression: true } 
+                });
+
+                // 3. Combine them
+                const combinedStream = new MediaStream([
+                    ...screenStream.getVideoTracks(), 
+                    ...audioStream.getAudioTracks()
+                ]);
+
+                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
+
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `Screencast_${new Date().getTime()}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+                    
+                    // Cleanup
+                    combinedStream.getTracks().forEach(track => track.stop());
+                    status.innerText = "Saved to Downloads!";
+                    status.style.color = "#3498db";
+                };
+
+                // Detect if user stops sharing via the browser's "Stop Sharing" button
+                screenStream.getVideoTracks()[0].onended = () => {
+                    if (mediaRecorder.state !== 'inactive') stopBtn.click();
+                };
+
+                mediaRecorder.start();
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                status.innerText = "⏺ RECORDING KAMI...";
+                status.style.color = "#e74c3c";
+
+            } catch (err) {
+                console.error(err);
+                alert("Permission denied or error starting recording.");
+            }
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        };
+    </script>
+</body>
+</html>
