@@ -11,6 +11,7 @@
         .status-box { margin: 20px 0; padding: 10px; border-radius: 8px; background: #121212; font-family: monospace; color: #2ecc71; }
         button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; transition: 0.2s; }
         #startBtn { background: #e74c3c; color: white; }
+        #pauseBtn { background: #f39c12; color: white; }
         #stopBtn { background: #95a5a6; color: white; }
         button:disabled { opacity: 0.3; cursor: not-allowed; }
         .instructions { font-size: 14px; color: #bdc3c7; line-height: 1.5; text-align: left; }
@@ -23,14 +24,15 @@
         <div id="status" class="status-box">Ready to Record</div>
 
         <button id="startBtn">🔴 Select Window & Record</button>
+        <button id="pauseBtn" disabled>⏸️ Pause</button>
         <button id="stopBtn" disabled>⏹️ Stop & Save to iMac</button>
 
         <div class="instructions">
             <p><strong>Steps:</strong><br>
             1. Click Record.<br>
-            2. In the popup, choose <b>"Window"</b> and select <b>Kami</b>.<br>
-            3. Make sure to allow <b>Microphone</b> access.<br>
-            4. Draw in Kami while you speak.<br>
+            2. In the popup, choose the <b>Window</b> or <b>Tab</b> you want to capture.<br>
+            3. Make sure to allow <b>Microphone</b> access if prompted.<br>
+            4. Present or draw on your screen while you speak.<br>
             5. Return here to click Stop.</p>
         </div>
     </div>
@@ -39,13 +41,14 @@
         let mediaRecorder;
         let recordedChunks = [];
         const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
         const stopBtn = document.getElementById('stopBtn');
         const status = document.getElementById('status');
 
         startBtn.onclick = async () => {
             recordedChunks = [];
             try {
-                // 1. Capture the Window (Kami, etc)
+                // 1. Capture the Window or Screen
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
                     video: { cursor: "always" },
                     audio: false // We capture mic separately for better quality
@@ -82,30 +85,7 @@
                     combinedStream.getTracks().forEach(track => track.stop());
                     status.innerText = "Saved to Downloads!";
                     status.style.color = "#3498db";
+                    
+                    // Reset Pause Button
+                    pauseBtn.innerText = "⏸️ Pause";
                 };
-
-                // Detect if user stops sharing via the browser's "Stop Sharing" button
-                screenStream.getVideoTracks()[0].onended = () => {
-                    if (mediaRecorder.state !== 'inactive') stopBtn.click();
-                };
-
-                mediaRecorder.start();
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                status.innerText = "⏺ RECORDING KAMI...";
-                status.style.color = "#e74c3c";
-
-            } catch (err) {
-                console.error(err);
-                alert("Permission denied or error starting recording.");
-            }
-        };
-
-        stopBtn.onclick = () => {
-            mediaRecorder.stop();
-            startBtn.disabled = false;
-            stopBtn.disabled = true;
-        };
-    </script>
-</body>
-</html>
