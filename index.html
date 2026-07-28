@@ -3,89 +3,208 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Screen Recorder</title>
+    <title>SCast Screen Recorder</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #1a1a1a; color: white; text-align: center; padding: 50px; }
-        .container { max-width: 500px; margin: 0 auto; background: #2c3e50; padding: 30px; border-radius: 15px; border: 2px solid #34495e; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #1a1a1a; 
+            color: white; 
+            text-align: center; 
+            padding: 20px; 
+            margin: 0;
+        }
+        .container { 
+            max-width: 500px; 
+            margin: 40px auto; 
+            background: #2c3e50; 
+            padding: 30px; 
+            border-radius: 15px; 
+            border: 2px solid #34495e; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
         h2 { margin-top: 0; color: #f1c40f; }
-        .status-box { margin: 20px 0; padding: 10px; border-radius: 8px; background: #121212; font-family: monospace; color: #2ecc71; }
-        button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; transition: 0.2s; }
+        .status-box { 
+            margin: 20px 0; 
+            padding: 12px; 
+            border-radius: 8px; 
+            background: #121212; 
+            font-family: monospace; 
+            color: #2ecc71; 
+            word-wrap: break-word;
+        }
+        button { 
+            width: 100%; 
+            padding: 15px; 
+            margin: 8px 0; 
+            font-size: 16px; 
+            font-weight: bold; 
+            border-radius: 10px; 
+            border: none; 
+            cursor: pointer; 
+            transition: 0.2s; 
+        }
         #startBtn { background: #e74c3c; color: white; }
         #pauseBtn { background: #f39c12; color: white; }
         #stopBtn { background: #95a5a6; color: white; }
         button:disabled { opacity: 0.3; cursor: not-allowed; }
-        .instructions { font-size: 14px; color: #bdc3c7; line-height: 1.5; text-align: left; }
+        .instructions { font-size: 14px; color: #bdc3c7; line-height: 1.5; text-align: left; margin-top: 20px; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h2>SCast</h2>
-        <div id="status" class="status-box">Ready to Record</div>
+        <div id="status" class="status-box">Checking Compatibility...</div>
 
         <button id="startBtn">🔴 Select Window & Record</button>
         <button id="pauseBtn" disabled>⏸️ Pause</button>
         <button id="stopBtn" disabled>⏹️ Stop & Save</button>
 
         <div class="instructions">
+            <p><strong>Note:</strong> Screen recording requires a <b>desktop/laptop browser</b> (Chrome, Edge, Firefox, or Safari on Mac).</p>
             <p><strong>Steps:</strong><br>
             1. Click Record.<br>
-            2. In the popup, choose the <b>Window</b> or <b>Tab</b> you want to capture.<br>
-            3. Make sure to allow <b>Microphone</b> access if prompted.<br>
-            4. Present or draw on your screen while you speak.<br>
-            5. Return here to click Stop.</p>
+            2. Choose the <b>Window</b> or <b>Tab</b> to capture.<br>
+            3. Grant <b>Microphone</b> access when prompted.<br>
+            4. Click Stop when finished to download the video.</p>
         </div>
     </div>
 
     <script>
         let mediaRecorder;
         let recordedChunks = [];
+        let combinedStream;
+
         const startBtn = document.getElementById('startBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const stopBtn = document.getElementById('stopBtn');
         const status = document.getElementById('status');
 
+        // Check if screen recording is supported (Desktop browsers only)
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+            status.innerText = "❌ Screen capture not supported on mobile/this browser.";
+            status.style.color = "#e74c3c";
+            startBtn.disabled = true;
+        } else {
+            status.innerText = "Ready to Record";
+        }
+
         startBtn.onclick = async () => {
             recordedChunks = [];
+            status.innerText = "Requesting permissions...";
+            status.style.color = "#f1c40f";
+
             try {
-                // 1. Capture the Window or Screen
+                // 1. Capture Screen/Window
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
                     video: { cursor: "always" },
-                    audio: false // We capture mic separately for better quality
+                    audio: false 
                 });
 
-                // 2. Capture the Microphone
-                const audioStream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: { echoCancellation: true, noiseSuppression: true } 
-                });
+                // 2. Capture Microphone
+                let audioStream;
+                try {
+                    audioStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { echoCancellation: true, noiseSuppression: true } 
+                    });
+                } catch (audioErr) {
+                    console.warn("Microphone access denied or unavailable. Recording video only.");
+                }
 
-                // 3. Combine them
-                const combinedStream = new MediaStream([
-                    ...screenStream.getVideoTracks(), 
-                    ...audioStream.getAudioTracks()
-                ]);
+                // 3. Combine Tracks
+                const tracks = [...screenStream.getVideoTracks()];
+                if (audioStream) {
+                    tracks.push(...audioStream.getAudioTracks());
+                }
+                combinedStream = new MediaStream(tracks);
 
-                mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
+                // 4. Select Supported Codec Safely
+                let options = {};
+                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+                    options = { mimeType: 'video/webm;codecs=vp8,opus' };
+                } else if (MediaRecorder.isTypeSupported('video/webm')) {
+                    options = { mimeType: 'video/webm' };
+                } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                    options = { mimeType: 'video/mp4' };
+                }
+
+                mediaRecorder = new MediaRecorder(combinedStream, options);
 
                 mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) recordedChunks.push(e.data);
+                    if (e.data && e.data.size > 0) {
+                        recordedChunks.push(e.data);
+                    }
                 };
 
                 mediaRecorder.onstop = () => {
-                    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                    const mimeType = mediaRecorder.mimeType || 'video/webm';
+                    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+                    const blob = new Blob(recordedChunks, { type: mimeType });
                     const url = URL.createObjectURL(blob);
+                    
                     const a = document.createElement('a');
                     a.style.display = 'none';
                     a.href = url;
-                    a.download = `Screencast_${new Date().getTime()}.webm`;
+                    a.download = `Screencast_${new Date().getTime()}.${ext}`;
                     document.body.appendChild(a);
                     a.click();
-                    
-                    // Cleanup
+                    document.body.removeChild(a);
+
+                    // Stop all media tracks cleanly
                     combinedStream.getTracks().forEach(track => track.stop());
+
                     status.innerText = "Saved to Downloads!";
-                    status.style.color = "#3498db";
-                    
-                    // Reset Pause Button
+                    status.style.color = "#2ecc71";
+
+                    startBtn.disabled = false;
+                    pauseBtn.disabled = true;
+                    stopBtn.disabled = true;
                     pauseBtn.innerText = "⏸️ Pause";
                 };
+
+                // Automatically stop recording if user stops sharing via browser bar
+                screenStream.getVideoTracks()[0].onended = () => {
+                    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                        mediaRecorder.stop();
+                    }
+                };
+
+                mediaRecorder.start();
+
+                status.innerText = "🔴 Recording in progress...";
+                status.style.color = "#e74c3c";
+
+                startBtn.disabled = true;
+                pauseBtn.disabled = false;
+                stopBtn.disabled = false;
+
+            } catch (err) {
+                console.error("Recording error:", err);
+                status.innerText = "Recording canceled or failed.";
+                status.style.color = "#e74c3c";
+                startBtn.disabled = false;
+            }
+        };
+
+        pauseBtn.onclick = () => {
+            if (mediaRecorder.state === "recording") {
+                mediaRecorder.pause();
+                status.innerText = "⏸️ Recording Paused";
+                status.style.color = "#f39c12";
+                pauseBtn.innerText = "▶️ Resume";
+            } else if (mediaRecorder.state === "paused") {
+                mediaRecorder.resume();
+                status.innerText = "🔴 Recording in progress...";
+                status.style.color = "#e74c3c";
+                pauseBtn.innerText = "⏸️ Pause";
+            }
+        };
+
+        stopBtn.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+            }
+        };
+    </script>
+</body>
+</html>
