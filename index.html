@@ -80,7 +80,6 @@
         const stopBtn = document.getElementById('stopBtn');
         const status = document.getElementById('status');
 
-        // Check if screen recording is supported (Desktop browsers only)
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
             status.innerText = "❌ Screen capture not supported on mobile/this browser.";
             status.style.color = "#e74c3c";
@@ -95,9 +94,12 @@
             status.style.color = "#f1c40f";
 
             try {
-                // 1. Capture Screen/Window
+                // 1. Capture Screen/Window with explicitly requested higher frame rate
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-                    video: { cursor: "always" },
+                    video: { 
+                        cursor: "always",
+                        frameRate: { ideal: 30, max: 60 }
+                    },
                     audio: false 
                 });
 
@@ -118,15 +120,23 @@
                 }
                 combinedStream = new MediaStream(tracks);
 
-                // 4. Select Supported Codec Safely
-                let options = {};
-                if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-                    options = { mimeType: 'video/webm;codecs=vp8,opus' };
-                } else if (MediaRecorder.isTypeSupported('video/webm')) {
-                    options = { mimeType: 'video/webm' };
-                } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                    options = { mimeType: 'video/mp4' };
+                // 4. Determine preferred MIME type
+                let mimeType = 'video/webm;codecs=vp8,opus';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    if (MediaRecorder.isTypeSupported('video/webm')) {
+                        mimeType = 'video/webm';
+                    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                        mimeType = 'video/mp4';
+                    } else {
+                        mimeType = '';
+                    }
                 }
+
+                // Set options with a high target bitrate (3 Mbps for clear educational content)
+                const options = mimeType ? { 
+                    mimeType: mimeType,
+                    videoBitsPerSecond: 3000000 
+                } : {};
 
                 mediaRecorder = new MediaRecorder(combinedStream, options);
 
@@ -137,9 +147,9 @@
                 };
 
                 mediaRecorder.onstop = () => {
-                    const mimeType = mediaRecorder.mimeType || 'video/webm';
-                    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-                    const blob = new Blob(recordedChunks, { type: mimeType });
+                    const finalType = mediaRecorder.mimeType || 'video/webm';
+                    const ext = finalType.includes('mp4') ? 'mp4' : 'webm';
+                    const blob = new Blob(recordedChunks, { type: finalType });
                     const url = URL.createObjectURL(blob);
                     
                     const a = document.createElement('a');
@@ -153,7 +163,7 @@
                     // Stop all media tracks cleanly
                     combinedStream.getTracks().forEach(track => track.stop());
 
-                    status.innerText = "Saved to Downloads!";
+                    status.innerText = `Saved! (${(blob.size / (1024 * 1024)).toFixed(2)} MB)`;
                     status.style.color = "#2ecc71";
 
                     startBtn.disabled = false;
@@ -162,14 +172,14 @@
                     pauseBtn.innerText = "⏸️ Pause";
                 };
 
-                // Automatically stop recording if user stops sharing via browser bar
                 screenStream.getVideoTracks()[0].onended = () => {
                     if (mediaRecorder && mediaRecorder.state !== "inactive") {
                         mediaRecorder.stop();
                     }
                 };
 
-                mediaRecorder.start();
+                // Request chunks every 1000ms (1 second) to maintain steady data flow
+                mediaRecorder.start(1000);
 
                 status.innerText = "🔴 Recording in progress...";
                 status.style.color = "#e74c3c";
